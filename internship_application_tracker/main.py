@@ -210,7 +210,36 @@ def update_job_postings(config: Dict[str, Any]) -> None:
 
 
 configs = [
-    # Configurations as defined earlier
+    {
+        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README-Off-Season.md",
+        "columnMapping": {
+            "readColumns": {"company": 0, "location": 2, "appLink": 4, "role": 1},
+            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
+        },
+        "keywordFilter": {
+            "enabled": False,
+            "keywords": [""],
+        },
+    },
+    {
+        "githubUrl": "https://raw.githubusercontent.com/Ouckah/Summer2025-Internships/main/README.md",
+        "columnMapping": {
+            "readColumns": {"company": 0, "location": 2, "appLink": 3, "role": 1},
+            "regex": {"company": r"([^|\n]+)", "appLink": r'href="([^"]+)"'},
+        },
+        "keywordFilter": {
+            "enabled": False,
+            "keywords": [""],
+        },
+    },
+    {
+        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README.md",
+        "columnMapping": {
+            "readColumns": {"company": 0, "location": 2, "appLink": 3, "role": 1},
+            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
+        },
+        "keywordFilter": {"enabled": True, "keywords": ["2025", "fall"]},
+    },
 ]
 
 
