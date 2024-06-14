@@ -11,13 +11,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 dotenv.load_dotenv()
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
-                    filename='./job_application_tracker.log', filemode='a')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filename="./job_application_tracker.log",
+    filemode="a",
+)
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 console.setFormatter(formatter)
-logging.getLogger('').addHandler(console)
+logging.getLogger("").addHandler(console)
 
 # Constants
 SHEET_ID = os.getenv("SHEET_ID")
@@ -42,6 +46,7 @@ COLUMNS = [
 ]
 EXCLUDED_LOCATIONS = ["canada", "toronto", "montreal", "ontario", "london", "--------"]
 
+
 def authenticate_gspread():
     scope = [
         "https://spreadsheets.google.com/feeds",
@@ -49,10 +54,11 @@ def authenticate_gspread():
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/drive",
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"), scope) # type: ignore
+    creds = ServiceAccountCredentials.from_json_keyfile_name(os.getenv("GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"), scope)  # type: ignore
     client = gspread.authorize(creds)  # type: ignore
     logging.info("Google Spreadsheet authenticated.")
     return client
+
 
 def fetch_job_postings(url: str) -> list[list[str]]:
     response = requests.get(url)
@@ -73,6 +79,7 @@ def fetch_job_postings(url: str) -> list[list[str]]:
     logging.info(f"Fetched job postings from {url}")
     return job_postings
 
+
 def parse_job_data(job: list[str], config: dict) -> dict:
     job_info = {}
     for key, index in config["columnMapping"]["readColumns"].items():
@@ -86,11 +93,15 @@ def parse_job_data(job: list[str], config: dict) -> dict:
     logging.info(f"Parsed job data for {job_info.get('company')}")
     return job_info
 
+
 def is_excluded_location(location):
-    excluded = any(excluded.lower() in location.lower() for excluded in EXCLUDED_LOCATIONS)
+    excluded = any(
+        excluded.lower() in location.lower() for excluded in EXCLUDED_LOCATIONS
+    )
     if excluded:
         logging.info(f"Excluded location found: {location}")
     return excluded
+
 
 def passes_keyword_filter(job_info, keyword_filter):
     if keyword_filter["enabled"]:
@@ -102,6 +113,7 @@ def passes_keyword_filter(job_info, keyword_filter):
             logging.info(f"Keyword filter failed for role: {job_info['role']}")
         return match
     return True
+
 
 def update_job_postings(config):
     client = authenticate_gspread()
@@ -130,7 +142,7 @@ def update_job_postings(config):
 
     if new_rows:
         range_to_update = f"A{next_row}:O{next_row + len(new_rows) - 1}"
-        sheet.update(new_rows, range_to_update, value_input_option="USER_ENTERED") # type: ignore
+        sheet.update(new_rows, range_to_update, value_input_option="USER_ENTERED")  # type: ignore
         logging.info(f"Updated Google Spreadsheet with {len(new_rows)} new rows.")
 
 
@@ -172,6 +184,7 @@ def main():
     for config in configs:
         update_job_postings(config)
     logging.info("Job posting update completed.")
+
 
 if __name__ == "__main__":
     main()
