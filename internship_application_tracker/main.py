@@ -67,7 +67,8 @@ def authenticate_gspread() -> gspread.Client:  # type: ignore
         "https://www.googleapis.com/auth/drive",
     ]
     creds = ServiceAccountCredentials.from_json_keyfile_name(  # type: ignore
-        os.getenv("GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"), scope)  # type: ignore
+        os.getenv("GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"), scope
+    )  # type: ignore
     client = gspread.authorize(creds)  # type: ignore
     logging.info("Google Spreadsheet authenticated.")
     return client
@@ -144,7 +145,8 @@ def is_excluded_location(location: str) -> bool:
 
 
 def passes_keyword_filter(
-        job_info: Dict[str, str], keyword_filter: Dict[str, Any]) -> bool:
+    job_info: Dict[str, str], keyword_filter: Dict[str, Any]
+) -> bool:
     """
     Check if the job information passes the keyword filter.
 
@@ -176,8 +178,9 @@ def update_job_postings(config: Dict[str, Any]) -> None:
     client = authenticate_gspread()
     sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)  # type: ignore
     existing_data = sheet.get_all_values()
-    existing_links: list[Any] = [row[5]
-                                 for row in existing_data if len(row) > 5]  # type: ignore
+    existing_links: list[Any] = [
+        row[5] for row in existing_data if len(row) > 5
+    ]  # type: ignore
 
     job_postings = fetch_job_postings(config["githubUrl"])
     next_row = len(existing_data) + 1
@@ -187,8 +190,7 @@ def update_job_postings(config: Dict[str, Any]) -> None:
         job_info = parse_job_data(job, config)
         new_link = job_info["appLink"] not in existing_links
         valid_location = not is_excluded_location(job_info["location"])
-        keyword_match = passes_keyword_filter(
-            job_info, config["keywordFilter"])
+        keyword_match = passes_keyword_filter(job_info, config["keywordFilter"])
 
         if new_link and valid_location and keyword_match:
             row = ["" for _ in range(15)]
@@ -200,27 +202,16 @@ def update_job_postings(config: Dict[str, Any]) -> None:
             new_rows.append(row)  # type: ignore
 
     if new_rows:
-        range_to_update = f"A{next_row}:O{next_row + len(new_rows) - 1}" # type: ignore
+        range_to_update = f"A{next_row}:O{next_row + len(new_rows) - 1}"  # type: ignore
         sheet.update(
-            new_rows,  # type: ignore
-            range_to_update,
-            value_input_option="USER_ENTERED")  # type: ignore
+            new_rows, range_to_update, value_input_option="USER_ENTERED"  # type: ignore
+        )  # type: ignore
         logging.info(
-            f"Updated Google Spreadsheet with {len(new_rows)} new rows.") # type: ignore
+            f"Updated Google Spreadsheet with {len(new_rows)} new rows."
+        )  # type: ignore
 
 
 configs = [
-    {
-        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README-Off-Season.md",
-        "columnMapping": {
-            "readColumns": {"company": 0, "location": 2, "appLink": 4, "role": 1},
-            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
-        },
-        "keywordFilter": {
-            "enabled": False,
-            "keywords": [""],
-        },
-    },
     {
         "githubUrl": "https://raw.githubusercontent.com/Ouckah/Summer2025-Internships/main/README.md",
         "columnMapping": {
@@ -233,22 +224,55 @@ configs = [
         },
     },
     {
+        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README-Off-Season.md",
+        "columnMapping": {
+            "readColumns": {"company": 0, "location": 2, "appLink": 4, "role": 1},
+            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
+        },
+        "keywordFilter": {
+            "enabled": False,
+            "keywords": [""],
+        },
+    },
+    {
+        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README.md",
+        "columnMapping": {
+            "readColumns": {"company": 0, "location": 2, "appLink": 3, "role": 1},
+            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
+        },
+        "keywordFilter": {"enabled": False, "keywords": [""]},
+    },
+]
+# Old configs
+""" 
+    {
+        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README-Off-Season.md",
+        "columnMapping": {
+            "readColumns": {"company": 0, "location": 2, "appLink": 4, "role": 1},
+            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
+        },
+        "keywordFilter": {
+            "enabled": False,
+            "keywords": [""],
+        },
+    },
+        {
         "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README.md",
         "columnMapping": {
             "readColumns": {"company": 0, "location": 2, "appLink": 3, "role": 1},
             "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
         },
         "keywordFilter": {"enabled": True, "keywords": ["2025", "fall"]},
-    },
-]
+    }, """
+
 
 
 def main() -> None:
     """
     Main function to orchestrate the job posting updates across multiple configurations.
     """
-    for config in configs: # type: ignore
-        update_job_postings(config) # type: ignore
+    for config in configs:  # type: ignore
+        update_job_postings(config)  # type: ignore
     logging.info("Job posting update completed.")
 
 
