@@ -9,6 +9,8 @@ import requests
 
 dotenv.load_dotenv()
 
+LOG_MODE = logging.ERROR
+
 # Constants
 LOG_FILE = "./pittcsc_simplify.log"
 MAX_FILE_SIZE = 128 * 1024 * 1024  # Max size in bytes (128 MB)
@@ -27,12 +29,12 @@ file_handler = RotatingFileHandler(
     delay=0,
 )
 file_handler.setFormatter(formatter)
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(LOG_MODE)
 
 # Console handler setup
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(LOG_MODE)
 
 # Logger setup
 logger = logging.getLogger("")
@@ -111,9 +113,12 @@ def fetch_job_postings(url: str) -> List[List[str]]:
             .replace("&utm_source=Simplify&ref=Simplify", ""),
             job["terms"],
             job["active"],
+            job["date_posted"]
         ]
         for job in data
     ]
+
+    print(len(job_postings))
     return job_postings
 
 
@@ -156,28 +161,49 @@ def process_job_postings(sheet: gspread.Worksheet, jobs: List[List[str]]) -> Lis
 
     jobs_to_add = []
 
+    excluded_counter = {}
+
     for job in jobs:
-        company, location, role, appLink, terms, active = job  # type: ignore
+        company, location, role, appLink, terms, active , date_posted = job # type: ignore
         if not active:
+            excluded_counter["inactive"] = excluded_counter.get("inactive", 0) +1
             logging.info(
                 f"Excluded job posting from {company} in {location} for inactivity."
             )
             continue
         if exclude_location(location):
+            excluded_counter["location"] = excluded_counter.get("location", 0) +1
             logging.info(
                 f"Excluded job posting from {company} in {location} for location."
             )
             continue
         if not check_terms(terms):
+            excluded_counter["terms"] = excluded_counter.get("terms", 0) +1
             logging.info(
                 f"Excluded job posting from {company} in {location} for terms."
             )
             continue
-        if appLink not in existing_app_links:
-            logging.info(f"Adding new job posting from {company} in {location}.")
-            # Update the sheet with the new job posting
-            jobs_to_add.append(job)
-
+        if terms == "Summer 2024":
+            # temporary fix for jobs so we will ignore jobs posted before 
+            if int(date_posted) < 1710797957:
+                excluded_counter["date_posted"] = excluded_counter.get("date_posted", 0) +1
+                logging.info(
+                    f"Excluded job posting from {company} in {location} for date posted."
+                )
+                continue
+        if appLink in existing_app_links:
+            excluded_counter["duplicate"] = excluded_counter.get("duplicate", 0) +1
+            logging.info(
+                f"Excluded job posting from {company} in {location} for duplicate."
+            )
+            continue
+        
+        excluded_counter["added"] = excluded_counter.get("added", 0) +1
+        logging.info(f"Adding new job posting from {company} in {location}.")
+        # Update the sheet with the new job posting
+        jobs_to_add.append(job)
+    
+    print(excluded_counter)
     return jobs_to_add
 
 
