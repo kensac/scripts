@@ -1,3 +1,4 @@
+from logging.handlers import RotatingFileHandler
 import os
 import logging
 import re
@@ -9,18 +10,31 @@ from oauth2client.service_account import ServiceAccountCredentials  # type: igno
 
 dotenv.load_dotenv()
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    filename="./job_application_tracker.log",
-    filemode="a",
-)
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
+# Constants
+LOG_FILE = "./pittcsc_simplify.log"
+MAX_FILE_SIZE = 128 * 1024 * 1024  # Max size in bytes (128 MB)
+BACKUP_COUNT = 5  # Number of backup files to keep
+
+# Formatter
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-console.setFormatter(formatter)
-logging.getLogger("").addHandler(console)
+
+# File handler setup with rotation
+file_handler = RotatingFileHandler(
+    LOG_FILE, mode='a', maxBytes=MAX_FILE_SIZE, backupCount=BACKUP_COUNT, encoding=None, delay=0
+)
+file_handler.setFormatter(formatter)
+file_handler.setLevel(logging.INFO)
+
+# Console handler setup
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+console_handler.setLevel(logging.INFO)
+
+# Logger setup
+logger = logging.getLogger('')
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 # Constants
 SHEET_ID = os.getenv("SHEET_ID")
@@ -223,6 +237,8 @@ configs = [
             "keywords": [""],
         },
     },
+]
+'''
     {
         "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README-Off-Season.md",
         "columnMapping": {
@@ -241,29 +257,7 @@ configs = [
             "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
         },
         "keywordFilter": {"enabled": False, "keywords": [""]},
-    },
-]
-# Old configs
-""" 
-    {
-        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README-Off-Season.md",
-        "columnMapping": {
-            "readColumns": {"company": 0, "location": 2, "appLink": 4, "role": 1},
-            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
-        },
-        "keywordFilter": {
-            "enabled": False,
-            "keywords": [""],
-        },
-    },
-        {
-        "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/README.md",
-        "columnMapping": {
-            "readColumns": {"company": 0, "location": 2, "appLink": 3, "role": 1},
-            "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
-        },
-        "keywordFilter": {"enabled": True, "keywords": ["2025", "fall"]},
-    }, """
+    },'''
 
 
 
