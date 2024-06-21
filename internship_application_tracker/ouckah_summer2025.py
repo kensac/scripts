@@ -20,7 +20,12 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 # File handler setup with rotation
 file_handler = RotatingFileHandler(
-    LOG_FILE, mode='a', maxBytes=MAX_FILE_SIZE, backupCount=BACKUP_COUNT, encoding=None, delay=0
+    LOG_FILE,
+    mode="a",
+    maxBytes=MAX_FILE_SIZE,
+    backupCount=BACKUP_COUNT,
+    encoding=None,
+    delay=0,
 )
 file_handler.setFormatter(formatter)
 file_handler.setLevel(logging.INFO)
@@ -31,7 +36,7 @@ console_handler.setFormatter(formatter)
 console_handler.setLevel(logging.INFO)
 
 # Logger setup
-logger = logging.getLogger('')
+logger = logging.getLogger("")
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
@@ -238,7 +243,7 @@ configs = [
         },
     },
 ]
-'''
+"""
     {
         "githubUrl": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README-Off-Season.md",
         "columnMapping": {
@@ -257,8 +262,7 @@ configs = [
             "regex": {"company": r"\[([^\]]+)\]", "appLink": r'href="([^"]+)"'},
         },
         "keywordFilter": {"enabled": False, "keywords": [""]},
-    },'''
-
+    },"""
 
 
 def main() -> None:

@@ -4,7 +4,7 @@ import os
 from typing import List
 import dotenv
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials # type: ignore
+from oauth2client.service_account import ServiceAccountCredentials  # type: ignore
 import requests
 
 dotenv.load_dotenv()
@@ -19,7 +19,12 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 # File handler setup with rotation
 file_handler = RotatingFileHandler(
-    LOG_FILE, mode='a', maxBytes=MAX_FILE_SIZE, backupCount=BACKUP_COUNT, encoding=None, delay=0
+    LOG_FILE,
+    mode="a",
+    maxBytes=MAX_FILE_SIZE,
+    backupCount=BACKUP_COUNT,
+    encoding=None,
+    delay=0,
 )
 file_handler.setFormatter(formatter)
 file_handler.setLevel(logging.INFO)
@@ -30,7 +35,7 @@ console_handler.setFormatter(formatter)
 console_handler.setLevel(logging.INFO)
 
 # Logger setup
-logger = logging.getLogger('')
+logger = logging.getLogger("")
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
@@ -49,7 +54,7 @@ EXCLUDED_LOCATIONS = [
 FOUND_SOURCE_DEFAULT = "Direct Application"
 
 INCLUDED_TERMS = [
-    "Summer 2024", # this is included because some jobs are mistakenly tagged as Summer 2024
+    "Summer 2024",  # this is included because some jobs are mistakenly tagged as Summer 2024
     "Fall 2024",
     "Winter 2024",
     "Spring 2025",
@@ -64,7 +69,7 @@ INCLUDED_TERMS = [
 
 
 # Authentication
-def authenticate_gspread() -> gspread.Client: # type: ignore
+def authenticate_gspread() -> gspread.Client:  # type: ignore
     """
     Authenticate with the Google Sheets API using OAuth2 credentials.
     Returns:
@@ -76,10 +81,10 @@ def authenticate_gspread() -> gspread.Client: # type: ignore
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/drive",
     ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name( # type: ignore
-        os.getenv("GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"), scope # type: ignore
+    creds = ServiceAccountCredentials.from_json_keyfile_name(  # type: ignore
+        os.getenv("GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"), scope  # type: ignore
     )
-    client = gspread.authorize(creds) # type: ignore
+    client = gspread.authorize(creds)  # type: ignore
     logging.info("Google Spreadsheet authenticated.")
     return client
 
@@ -135,14 +140,11 @@ def check_terms(terms: list[str]) -> bool:
     Returns:
         bool: True if the terms should be excluded, False otherwise.
     """
-    return any(
-        included_term in terms
-        for included_term in INCLUDED_TERMS
-    )
+    return any(included_term in terms for included_term in INCLUDED_TERMS)
 
 
 # Process and update job postings
-def process_job_postings(sheet: gspread.Worksheet, jobs: List[List[str]]) -> List[List[str]]: # type: ignore
+def process_job_postings(sheet: gspread.Worksheet, jobs: List[List[str]]) -> List[List[str]]:  # type: ignore
     """
     Process and update job postings in the Google Sheet.
     Args:
@@ -155,15 +157,21 @@ def process_job_postings(sheet: gspread.Worksheet, jobs: List[List[str]]) -> Lis
     jobs_to_add = []
 
     for job in jobs:
-        company, location, role, appLink, terms, active = job # type: ignore
+        company, location, role, appLink, terms, active = job  # type: ignore
         if not active:
-            logging.info(f"Excluded job posting from {company} in {location} for inactivity.")
+            logging.info(
+                f"Excluded job posting from {company} in {location} for inactivity."
+            )
             continue
         if exclude_location(location):
-            logging.info(f"Excluded job posting from {company} in {location} for location.")
+            logging.info(
+                f"Excluded job posting from {company} in {location} for location."
+            )
             continue
         if not check_terms(terms):
-            logging.info(f"Excluded job posting from {company} in {location} for terms.")
+            logging.info(
+                f"Excluded job posting from {company} in {location} for terms."
+            )
             continue
         if appLink not in existing_app_links:
             logging.info(f"Adding new job posting from {company} in {location}.")
@@ -171,6 +179,7 @@ def process_job_postings(sheet: gspread.Worksheet, jobs: List[List[str]]) -> Lis
             jobs_to_add.append(job)
 
     return jobs_to_add
+
 
 def write_to_sheet(sheet: gspread.Worksheet, jobs: List[List[str]]) -> None:
     """
@@ -185,7 +194,7 @@ def write_to_sheet(sheet: gspread.Worksheet, jobs: List[List[str]]) -> None:
 
     for job in jobs:
         row = ["" for _ in range(15)]
-        # format of row in sheet is ["", company, "", location,FOUND_SOURCE_DEFAULT, appLink, role, terms] 
+        # format of row in sheet is ["", company, "", location,FOUND_SOURCE_DEFAULT, appLink, role, terms]
         row[1] = job[0]
         row[3] = job[1]
         row[4] = FOUND_SOURCE_DEFAULT
@@ -193,7 +202,7 @@ def write_to_sheet(sheet: gspread.Worksheet, jobs: List[List[str]]) -> None:
         row[6] = job[2]
         row[7] = " ".join(job[4])
         new_jobs.append(row)
-    
+
     if new_jobs:
         range_to_update = f"A{next_row}:O{next_row + len(new_jobs) - 1}"  # type: ignore
         sheet.update(
@@ -202,6 +211,7 @@ def write_to_sheet(sheet: gspread.Worksheet, jobs: List[List[str]]) -> None:
         logging.info(
             f"Updated Google Spreadsheet with {len(new_jobs)} new rows."
         )  # type: ignore
+
 
 # Main function
 def main():
@@ -215,7 +225,6 @@ def main():
     )
     jobs_to_add = process_job_postings(sheet, jobs)
     write_to_sheet(sheet, jobs_to_add)
-
 
 
 if __name__ == "__main__":
