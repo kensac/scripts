@@ -26,7 +26,7 @@ file_handler = RotatingFileHandler(
     maxBytes=MAX_FILE_SIZE,
     backupCount=BACKUP_COUNT,
     encoding=None,
-    delay=0,
+    delay=False,
 )
 file_handler.setFormatter(formatter)
 file_handler.setLevel(LOG_MODE)
