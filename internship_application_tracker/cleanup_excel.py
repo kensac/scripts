@@ -2,7 +2,6 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
-
 import requests
 from bs4 import BeautifulSoup
 
@@ -17,7 +16,7 @@ logging.basicConfig(
 class JobURLChecker:
     """
     A modular class for checking job URLs to determine if they are expired.
-    
+
     You can customize:
       - verify_content: Whether to look inside page content for keywords.
       - retries: How many times to retry a request in case of transient errors.
@@ -54,7 +53,12 @@ class JobURLChecker:
                 "reason": "Empty or invalid URL",
             }
 
-        result: Dict[str, Any] = {"url": url, "status": None, "expired": False, "reason": ""}
+        result: Dict[str, Any] = {
+            "url": url,
+            "status": None,
+            "expired": False,
+            "reason": "",
+        }
 
         # --- First try: HEAD request ---
         try:
@@ -82,8 +86,12 @@ class JobURLChecker:
             # Handle 429 errors if necessary
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After")
-                wait_time = int(retry_after) if retry_after and retry_after.isdigit() else 60
-                logging.warning(f"429 received for {url}. Waiting for {wait_time} seconds.")
+                wait_time = (
+                    int(retry_after) if retry_after and retry_after.isdigit() else 60
+                )
+                logging.warning(
+                    f"429 received for {url}. Waiting for {wait_time} seconds."
+                )
                 time.sleep(wait_time)
 
             if response.status_code == 404:
@@ -105,25 +113,34 @@ class JobURLChecker:
                     page_text_lower = response.text.lower()
                     if any(keyword in page_text_lower for keyword in keyword_list):
                         keyword_found = next(
-                            keyword for keyword in keyword_list if keyword in page_text_lower
+                            keyword
+                            for keyword in keyword_list
+                            if keyword in page_text_lower
                         )
                         result["expired"] = True
-                        result["reason"] = f"Page content indicates expired job: {keyword_found}"
+                        result["reason"] = (
+                            f"Page content indicates expired job: {keyword_found}"
+                        )
 
                     # Provider-specific checks
                     if "workday" in url.lower():
                         soup = BeautifulSoup(response.text, "html.parser")
-                        meta_tag = soup.find("meta", {"name": "description", "property": "og:description"})
+                        meta_tag = soup.find(
+                            "meta",
+                            {"name": "description", "property": "og:description"},
+                        )
                         if not meta_tag or not meta_tag.get("content", "").strip():
                             result["expired"] = True
-                            result["reason"] = "Workday page missing meta og:description content"
+                            result["reason"] = (
+                                "Workday page missing meta og:description content"
+                            )
                     if "greenhouse" in url.lower():
                         if "?error=true" in response.url:
                             result["expired"] = True
                             result["reason"] = "Greenhouse page indicates expired job"
-                        elif url != response.url:
-                            result["expired"] = True
-                            result["reason"] = "Greenhouse page redirected"
+                        # elif url != response.url:
+                        #     result["expired"] = True
+                        #     result["reason"] = "Greenhouse page redirected"
                     if "jobvite" in url.lower():
                         if "?error=404" in response.url:
                             result["expired"] = True
@@ -167,7 +184,9 @@ class JobURLChecker:
         Prints periodic progress updates including an estimated time remaining.
         """
         total_urls = len(urls)
-        results: List[Optional[Dict[str, Any]]] = [None] * total_urls  # Preallocate list for ordered results.
+        results: List[Optional[Dict[str, Any]]] = [
+            None
+        ] * total_urls  # Preallocate list for ordered results.
         completed_count = 0
         start_time = time.time()
         last_print_time = start_time
@@ -206,7 +225,9 @@ class JobURLChecker:
                     last_print_time = current_time
 
         total_elapsed = time.time() - start_time
-        logging.info(f"Completed processing {total_urls} URLs in {total_elapsed:.2f} seconds.")
+        logging.info(
+            f"Completed processing {total_urls} URLs in {total_elapsed:.2f} seconds."
+        )
         # Now all results are in the same order as the input.
         return results  # type: ignore
 
@@ -233,7 +254,9 @@ class JobURLChecker:
                 f.write(", ".join(row) + "\n")
         logging.info(f"Results written to {filepath}")
 
-    def run(self, urls: List[str], output_file: Optional[str] = None) -> List[Dict[str, Any]]:
+    def run(
+        self, urls: List[str], output_file: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
         Runs the URL checks on the given list of URLs and optionally writes the results
         to a CSV file. Returns the list of result dictionaries.
@@ -242,11 +265,6 @@ class JobURLChecker:
         if output_file:
             self.save_results_to_csv(results, output_file)
         return results
-
-
-# ----------------------------
-# Example usage (without command-line args)
-# ----------------------------
 
 def main():
     # Read URLs from a file (one URL per line)
@@ -257,9 +275,9 @@ def main():
     # Create an instance of the checker.
     checker = JobURLChecker(
         verify_content=True,  # parse the page for expiration keywords
-        retries=1,            # retry once on transient failures
-        max_workers=5,        # use 5 threads concurrently
-        delay=0.5             # add a half-second delay between requests (helps avoid 429 errors)
+        retries=1,  # retry once on transient failures
+        max_workers=5,  # use 5 threads concurrently
+        delay=0.5,  # add a half-second delay between requests (helps avoid 429 errors)
     )
 
     # Run the URL checks and save the results to a CSV file.
