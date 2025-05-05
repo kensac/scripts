@@ -56,11 +56,8 @@ EXCLUDED_LOCATIONS = [
 FOUND_SOURCE_DEFAULT = "Direct Application"
 
 INCLUDED_TERMS = [
-    "Summer 2024",  # this is included because some jobs are mistakenly tagged as Summer 2024
-    "Fall 2024",
-    "Winter 2024",
     "Spring 2025",
-    "Summer 2025",
+    "Summer 2025", # this is included because some jobs are mistakenly tagged as Summer 2025
     "Fall 2025",
     "Winter 2025",
     "Spring 2026",
