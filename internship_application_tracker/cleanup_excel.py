@@ -1,27 +1,49 @@
+from __future__ import annotations
+
+import argparse
+import csv
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Optional
+
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-# Configure logging
+# Configure module-level logger
+logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+# Constants
+HEAD_TIMEOUT = 5  # seconds
+GET_TIMEOUT = 10  # seconds
+KEYWORD_LIST: List[str] = [
+    "job not found",
+    "position has been filled",
+    "no longer accepting applications",
+    "job expired",
+    "sorry, this job has expired",
+    "the page you are looking for doesn't exist.",
+]
+
+@dataclass(frozen=True)
+class URLCheckResult:
+    url: str
+    status: Optional[int]
+    expired: bool
+    reason: str
 
 class JobURLChecker:
     """
-    A modular class for checking job URLs to determine if they are expired.
-
-    You can customize:
-      - verify_content: Whether to look inside page content for keywords.
-      - retries: How many times to retry a request in case of transient errors.
-      - max_workers: Number of threads for concurrent URL checking.
-      - delay: Optional delay between requests (useful to avoid rate limiting).
+    Checks job URLs for expiration or error conditions.
     """
 
     def __init__(
@@ -30,265 +52,168 @@ class JobURLChecker:
         retries: int = 0,
         max_workers: int = 10,
         delay: float = 0.0,
-    ):
+    ) -> None:
         self.verify_content = verify_content
         self.retries = retries
         self.max_workers = max_workers
         self.delay = delay
-        self.session = requests.Session()
-        # If desired, you could mount a custom HTTPAdapter here to control retries, backoff, etc.
+        self.session: requests.Session = requests.Session()
 
-    def check_url(self, url: str) -> Dict[str, Any]:
-        """
-        Checks if the given URL appears to be expired or invalid.
-        First tries a HEAD request for speed, then (if needed) a GET request.
-        Optionally examines page content for keywords that indicate expiration.
-        """
+        if retries > 0:
+            retry_strategy = Retry(
+                total=retries,
+                backoff_factor=0.5,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["HEAD", "GET"],
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
+
+    def check_url(self, url: str) -> URLCheckResult:
         url = url.strip()
         if not url:
-            return {
-                "url": "",
-                "status": None,
-                "expired": True,
-                "reason": "Empty or invalid URL",
-            }
+            return URLCheckResult(url=url, status=None, expired=False, reason="Empty URL")
 
-        result: Dict[str, Any] = {
-            "url": url,
-            "status": None,
-            "expired": False,
-            "reason": "",
-        }
-
-        # --- First try: HEAD request ---
+        # Attempt HEAD request first
         try:
-            head_response = self.session.head(url, timeout=5)
-            result["status"] = head_response.status_code
+            head_resp = self.session.head(url, timeout=HEAD_TIMEOUT)
+            status = head_resp.status_code
+            if status == 404:
+                return URLCheckResult(url, status, True, "404 Not Found (HEAD)")
+            if 400 <= status < 600:
+                return URLCheckResult(url, status, True, f"HTTP {status} (HEAD)")
+        except requests.RequestException:
+            logger.debug("HEAD request failed for %s", url)
+            status = None
 
-            if head_response.status_code == 404:
-                result["expired"] = True
-                result["reason"] = "404 Not Found (HEAD)"
-                return result
-
-            if 400 <= head_response.status_code < 600:
-                result["expired"] = True
-                result["reason"] = f"Error {head_response.status_code} (HEAD)"
-                return result
-
-        except requests.exceptions.RequestException as exc:
-            logging.debug(f"HEAD request failed for {url}: {exc}")
-
-        # --- Second try: GET request ---
+        # Fallback to GET request
         try:
-            response = self.session.get(url, timeout=10)
-            result["status"] = response.status_code
+            get_resp = self.session.get(url, timeout=GET_TIMEOUT)
+            status = get_resp.status_code
 
-            # Handle 429 errors if necessary
-            if response.status_code == 429:
-                retry_after = response.headers.get("Retry-After")
-                wait_time = (
-                    int(retry_after) if retry_after and retry_after.isdigit() else 60
-                )
-                logging.warning(
-                    f"429 received for {url}. Waiting for {wait_time} seconds."
-                )
-                time.sleep(wait_time)
+            if status == 429:
+                retry_after = get_resp.headers.get("Retry-After")
+                wait = int(retry_after) if retry_after and retry_after.isdigit() else 60
+                logger.warning("429 for %s, sleeping %ds", url, wait)
+                time.sleep(wait)
 
-            if response.status_code == 404:
-                result["expired"] = True
-                result["reason"] = "404 Not Found (GET)"
-            elif 400 <= response.status_code < 600 and response.status_code != 429:
-                result["expired"] = True
-                result["reason"] = f"HTTP {response.status_code} (GET)"
-            else:
-                if self.verify_content:
-                    keyword_list = [
-                        "job not found",
-                        "position has been filled",
-                        "no longer accepting applications",
-                        "job expired",
-                        "sorry, this job has expired",
-                        "the page you are looking for doesn't exist.",
-                    ]
-                    page_text_lower = response.text.lower()
-                    if any(keyword in page_text_lower for keyword in keyword_list):
-                        keyword_found = next(
-                            keyword
-                            for keyword in keyword_list
-                            if keyword in page_text_lower
-                        )
-                        result["expired"] = True
-                        result["reason"] = (
-                            f"Page content indicates expired job: {keyword_found}"
+            if status == 404:
+                return URLCheckResult(url, status, True, "404 Not Found (GET)")
+            if 400 <= status < 600 and status != 429:
+                return URLCheckResult(url, status, True, f"HTTP {status} (GET)")
+
+            # Content-based checks
+            if self.verify_content:
+                text_lower = get_resp.text.lower()
+                for kw in KEYWORD_LIST:
+                    if kw in text_lower:
+                        return URLCheckResult(
+                            url, status, True, f"Content indicates expired: '{kw}'"
                         )
 
-                    # Provider-specific checks
-                    if "workday" in url.lower():
-                        soup = BeautifulSoup(response.text, "html.parser")
-                        meta_tag = soup.find(
-                            "meta",
-                            {"name": "description", "property": "og:description"},
+                lower_url = url.lower()
+                # Workday-specific logic
+                if 'workday' in lower_url:
+                    soup = BeautifulSoup(get_resp.text, 'html.parser')
+                    meta = soup.find('meta', {'property': 'og:description'})
+                    if not meta or not meta.get('content', '').strip():
+                        return URLCheckResult(
+                            url, status, True, "Workday page missing og:description"
                         )
-                        if not meta_tag or not meta_tag.get("content", "").strip():
-                            result["expired"] = True
-                            result["reason"] = (
-                                "Workday page missing meta og:description content"
-                            )
-                    if "greenhouse" in url.lower():
-                        if "?error=true" in response.url:
-                            result["expired"] = True
-                            result["reason"] = "Greenhouse page indicates expired job"
-                        # elif url != response.url:
-                        #     result["expired"] = True
-                        #     result["reason"] = "Greenhouse page redirected"
-                    if "jobvite" in url.lower():
-                        if "?error=404" in response.url:
-                            result["expired"] = True
-                            result["reason"] = "Jobvite page indicates expired job"
+                # Greenhouse-specific logic
+                if 'greenhouse' in lower_url and '?error=true' in get_resp.url:
+                    return URLCheckResult(url, status, True, "Greenhouse page indicates expired job")
+                # Jobvite-specific logic
+                if 'jobvite' in lower_url and '?error=404' in get_resp.url:
+                    return URLCheckResult(url, status, True, "Jobvite page indicates expired job")
 
-        except requests.exceptions.ReadTimeout:
-            result["expired"] = False
-            result["reason"] = "Read Timeout (uncertain status)"
-        except requests.exceptions.RequestException as exc:
-            result["expired"] = True
-            result["reason"] = f"Request Error: {exc}"
+            return URLCheckResult(url, status, False, "OK")
 
-        return result
+        except requests.ReadTimeout:
+            return URLCheckResult(url, status, False, "Read Timeout")
+        except requests.RequestException as exc:
+            # Network or other errors: uncertain, not expired
+            return URLCheckResult(url, status, False, f"Request Error: {exc}")
 
-    def _single_url_task(self, url: str) -> Dict[str, Any]:
-        """
-        Handles a single URL, retrying if necessary.
-        """
-        attempts = 0
-        last_result: Optional[Dict[str, Any]] = None
-
-        while attempts <= self.retries:
+    def _single_task(self, url: str) -> URLCheckResult:
+        attempt = 0
+        last: Optional[URLCheckResult] = None
+        while attempt <= self.retries:
             if self.delay:
                 time.sleep(self.delay)
             result = self.check_url(url)
-            if result.get("status") is not None:
+            if result.status is not None:
                 return result
-            last_result = result
-            attempts += 1
+            last = result
+            attempt += 1
+        # Max retries but uncertain if expired
+        return last or URLCheckResult(url, None, False, "Max retries exceeded")
 
-        return last_result or {
-            "url": url,
-            "status": None,
-            "expired": True,
-            "reason": "Max retries exceeded",
-        }
-
-    def process_urls(self, urls: List[str]) -> List[Dict[str, Any]]:
-        """
-        Processes a list of URLs concurrently while preserving the order of the input.
-        Prints periodic progress updates including an estimated time remaining.
-        """
-        total_urls = len(urls)
-        results: List[Optional[Dict[str, Any]]] = [
-            None
-        ] * total_urls  # Preallocate list for ordered results.
-        completed_count = 0
-        start_time = time.time()
-        last_print_time = start_time
-        print_interval = 5  # seconds between progress prints
+    def process_urls(self, urls: List[str]) -> List[URLCheckResult]:
+        total = len(urls)
+        results: List[URLCheckResult] = [URLCheckResult(u, None, False, "Not processed") for u in urls]
+        start = time.time()
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Map each future to its input index.
-            future_to_index = {
-                executor.submit(self._single_url_task, url): index
-                for index, url in enumerate(urls)
-            }
-            for future in as_completed(future_to_index):
-                index = future_to_index[future]
+            future_to_idx = {executor.submit(self._single_task, u): i for i, u in enumerate(urls)}
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
                 try:
-                    results[index] = future.result()
+                    results[idx] = future.result()
                 except Exception as exc:
-                    url = urls[index]
-                    logging.error(f"{url} generated an exception: {exc}")
-                    results[index] = {
-                        "url": url,
-                        "status": None,
-                        "expired": True,
-                        "reason": f"Unhandled exception: {exc}",
-                    }
-                completed_count += 1
-                current_time = time.time()
-                if current_time - last_print_time >= print_interval:
-                    elapsed = current_time - start_time
-                    average_time = elapsed / completed_count if completed_count else 0
-                    remaining_count = total_urls - completed_count
-                    estimated_remaining = average_time * remaining_count
-                    logging.info(
-                        f"Progress: {completed_count}/{total_urls} completed. "
-                        f"Estimated time remaining: {estimated_remaining:.2f} seconds."
-                    )
-                    last_print_time = current_time
+                    u = urls[idx]
+                    logger.error("Error processing %s: %s", u, exc)
+                    # Uncertain error: not marking expired
+                    results[idx] = URLCheckResult(u, None, False, f"Exception: {exc}")
 
-        total_elapsed = time.time() - start_time
-        logging.info(
-            f"Completed processing {total_urls} URLs in {total_elapsed:.2f} seconds."
-        )
-        # Now all results are in the same order as the input.
-        return results  # type: ignore
-
-    def save_results_to_csv(self, results: List[Dict[str, Any]], filepath: str) -> None:
-        """
-        Saves results to a CSV file with a header row.
-        The output contains URL, HTTP status, expired flag, reason, and sheet text.
-        """
-        output_lines: List[List[str]] = []
-        for r in results:
-            url: str = r.get("url", "")
-            status: int = r.get("status", 0)
-            expired: bool = r.get("expired", False)
-            reason: str = r.get("reason", "")
-            sheet_text: str = "No Longer Interested" if expired else ""
-            row: List[str] = [url, str(status), str(expired), reason, sheet_text]
-            output_lines.append(row)
-
-        # Insert header row.
-        output_lines.insert(0, ["URL", "Status", "Expired", "Reason", "Sheet Text"])
-
-        with open(filepath, "w", encoding="utf-8") as f:
-            for row in output_lines:
-                f.write(", ".join(row) + "\n")
-        logging.info(f"Results written to {filepath}")
-
-    def run(
-        self, urls: List[str], output_file: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Runs the URL checks on the given list of URLs and optionally writes the results
-        to a CSV file. Returns the list of result dictionaries.
-        """
-        results = self.process_urls(urls)
-        if output_file:
-            self.save_results_to_csv(results, output_file)
+        elapsed = time.time() - start
+        logger.info("Processed %d URLs in %.2fs", total, elapsed)
         return results
 
-def main():
-    # Read URLs from a file (one URL per line)
-    url_file = "urls.txt"
-    with open(url_file, "r") as f:
-        urls = [line.strip() for line in f if line.strip()]
+    def save_to_csv(self, results: List[URLCheckResult], path: Path) -> None:
+        """Writes URLCheckResults to CSV, preserving sheet text column."""
+        with path.open('w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["URL", "Status", "Expired", "Reason", "Sheet Text"])
+            for r in results:
+                sheet_text = "No Longer Interested" if r.expired else ""
+                writer.writerow([r.url, r.status or '', r.expired, r.reason, sheet_text])
+        logger.info("Results saved to %s", path)
 
-    # Create an instance of the checker.
-    checker = JobURLChecker(
-        verify_content=True,  # parse the page for expiration keywords
-        retries=1,  # retry once on transient failures
-        max_workers=5,  # use 5 threads concurrently
-        delay=0.5,  # add a half-second delay between requests (helps avoid 429 errors)
+    def run(self, urls: List[str], output: Optional[Path] = None) -> List[URLCheckResult]:
+        results = self.process_urls(urls)
+        if output:
+            self.save_to_csv(results, output)
+        # also write out the sheet text column to a seperate file
+        sheet_text_path = output.with_suffix('.sheet_text.csv')
+        with sheet_text_path.open('w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            for r in results:
+                sheet_text = "No Longer Interested" if r.expired else " "
+                writer.writerow([sheet_text])
+        return results
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Check job URLs for expiration.")
+    parser.add_argument(
+        '--input', '-i', type=Path, default=Path('urls.txt'),
+        help='Path to file with one URL per line'
     )
+    parser.add_argument(
+        '--output', '-o', type=Path, default=Path('output.csv'),
+        help='CSV file to write results'
+    )
+    args = parser.parse_args()
 
-    # Run the URL checks and save the results to a CSV file.
-    results = checker.run(urls, output_file="output.csv")
+    if not args.input.exists():
+        logger.error("Input file not found: %s", args.input)
+        return
 
-    # For demonstration, write the sheet text ("No Longer Interested" for expired jobs) to an output file.
-    with open("output.txt", "w", encoding="utf-8") as f:
-        for r in results:
-            sheet_text = "No Longer Interested" if r.get("expired", False) else ""
-            f.write(sheet_text + "\n")
+    urls = [line.strip() for line in args.input.read_text(encoding='utf-8').splitlines() if line.strip()]
+    checker = JobURLChecker(verify_content=True, retries=1, max_workers=5, delay=0.5)
+    checker.run(urls, args.output)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
