@@ -7,6 +7,7 @@ import dotenv
 import requests
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials  # type: ignore
+import warnings
 
 dotenv.load_dotenv()
 
@@ -269,6 +270,12 @@ def main() -> None:
     """
     Main function to orchestrate the job posting updates across multiple configurations.
     """
+
+    warnings.warn(
+        "This file is deprecated and will be removed in the future. Please use pittcsc_simplify.py instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     for config in configs:  # type: ignore
         update_job_postings(config)  # type: ignore
     logging.info("Job posting update completed.")
