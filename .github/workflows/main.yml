@@ -34,6 +34,8 @@ jobs:
       - name: Run tracker
         # Assumes you’ve also set SHEET_ID as a GitHub Secret
         env:
-          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SHEET_ID: ${{ secrets.SHEET_ID_INTERNSHIP }}
+          JOB_LISTINGS_URL: ${{ secrets.JOB_LISTINGS_URL_INTERNSHIP }}
+        
         run: |
           python internship_application_tracker/pittcsc_simplify.py

@@ -28,10 +28,7 @@ INCLUDED_TERMS: Set[str] = {
     "Spring 2028", "Summer 2028", "Fall 2028", "Winter 2028",
 }
 FOUND_SOURCE_DEFAULT: str = "Direct Application"
-JOB_LISTINGS_URL: str = (
-    "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/"
-    ".github/scripts/listings.json"
-)
+JOB_LISTINGS_URL: str = os.environ["JOB_LISTINGS_URL"]
 FALLBACK_CUTOFF_DATE: str = "2025-03-01"
 FALLBACK_CUTOFF_TS: int = int(
     datetime.datetime.fromisoformat(FALLBACK_CUTOFF_DATE).timestamp()
