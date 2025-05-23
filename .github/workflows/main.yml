@@ -1,4 +1,4 @@
-name: “Job Application Tracker”
+name: Job Application Tracker
 
 on:
   schedule:

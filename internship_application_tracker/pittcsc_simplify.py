@@ -11,6 +11,9 @@ import requests
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+from gspread.utils import ValueInputOption
+from gspread.worksheet import Worksheet
+
 # Load environment variables
 dotenv.load_dotenv()
 
@@ -18,14 +21,27 @@ dotenv.load_dotenv()
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 SHEET_ID: str = os.environ["SHEET_ID"]  # Raises if missing
 SHEET_NAME: str = "Job Application Tracker"
-EXCLUDED_LOCATIONS: Set[str] = {loc.lower() for loc in [
-    "canada", "toronto", "montreal", "ontario", "london", "--------"
-]}
+EXCLUDED_LOCATIONS: Set[str] = {
+    loc.lower()
+    for loc in ["canada", "toronto", "montreal", "ontario", "london", "--------"]
+}
 INCLUDED_TERMS: Set[str] = {
-    "Spring 2025", "Summer 2025", "Fall 2025", "Winter 2025",
-    "Spring 2026", "Summer 2026", "Fall 2026", "Winter 2026",
-    "Spring 2027", "Summer 2027", "Fall 2027", "Winter 2027",
-    "Spring 2028", "Summer 2028", "Fall 2028", "Winter 2028",
+    "Spring 2025",
+    "Summer 2025",
+    "Fall 2025",
+    "Winter 2025",
+    "Spring 2026",
+    "Summer 2026",
+    "Fall 2026",
+    "Winter 2026",
+    "Spring 2027",
+    "Summer 2027",
+    "Fall 2027",
+    "Winter 2027",
+    "Spring 2028",
+    "Summer 2028",
+    "Fall 2028",
+    "Winter 2028",
 }
 FOUND_SOURCE_DEFAULT: str = "Direct Application"
 JOB_LISTINGS_URL: str = os.environ["JOB_LISTINGS_URL"]
@@ -36,11 +52,10 @@ FALLBACK_CUTOFF_TS: int = int(
 
 # Configure root logger to stdout only
 logging.basicConfig(
-    level=logging.DEBUG,
-    format=LOG_FORMAT,
-    handlers=[logging.StreamHandler(sys.stdout)]
+    level=logging.DEBUG, format=LOG_FORMAT, handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("job_tracker")
+
 
 @dataclass(frozen=True)
 class JobPosting:
@@ -53,7 +68,7 @@ class JobPosting:
     date_posted: int
 
 
-def authenticate_gspread() -> gspread.Client:
+def authenticate_gspread() -> gspread.client.Client:
     """
     Authenticate with Google Sheets API via service account.
     """
@@ -65,7 +80,7 @@ def authenticate_gspread() -> gspread.Client:
     ]
     creds_path = os.environ["GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
-    client = gspread.authorize(creds)
+    client = gspread.auth.authorize(creds)
     logger.info("Authenticated with Google Sheets API.")
     return client
 
@@ -84,19 +99,19 @@ def fetch_job_postings(url: str, timeout: float = 10.0) -> List[JobPosting]:
 
     postings: List[JobPosting] = []
     for entry in data:
-        postings.append(JobPosting(
-            company=entry.get("company_name", ""),
-            locations=entry.get("locations", []),
-            title=entry.get("title", ""),
-            url=entry.get("url", "").replace(
-                "?utm_source=Simplify&ref=Simplify", ""
-            ).replace(
-                "&utm_source=Simplify&ref=Simplify", ""
-            ),
-            terms=entry.get("terms", []),
-            active=bool(entry.get("active", False)),
-            date_posted=int(entry.get("date_posted", 0)),
-        ))
+        postings.append(
+            JobPosting(
+                company=entry.get("company_name", ""),
+                locations=entry.get("locations", []),
+                title=entry.get("title", ""),
+                url=entry.get("url", "")
+                .replace("?utm_source=Simplify&ref=Simplify", "")
+                .replace("&utm_source=Simplify&ref=Simplify", ""),
+                terms=entry.get("terms", []),
+                active=bool(entry.get("active", False)),
+                date_posted=int(entry.get("date_posted", 0)),
+            )
+        )
     logger.info(f"Fetched {len(postings)} job postings.")
     return postings
 
@@ -142,14 +157,12 @@ def filter_job_postings(
     return filtered
 
 
-def get_existing_urls(sheet: gspread.Worksheet) -> Set[str]:
+def get_existing_urls(sheet: Worksheet) -> Set[str]:
     rows = sheet.get_all_values()
     return {row[5] for row in rows if len(row) > 5}
 
 
-def write_to_sheet(
-    sheet: gspread.Worksheet, jobs: List[JobPosting]
-) -> None:
+def write_to_sheet(sheet: Worksheet, jobs: List[JobPosting]) -> None:
     """
     Append new job postings to the Google Sheet.
     """
@@ -174,7 +187,9 @@ def write_to_sheet(
     end_row = start_row + len(rows_to_add) - 1
     cell_range = f"A{start_row}:O{end_row}"
     try:
-        sheet.update(rows_to_add, cell_range, value_input_option="USER_ENTERED")
+        sheet.update(
+            rows_to_add, cell_range, value_input_option=ValueInputOption.user_entered
+        )
         logger.info(f"Added {len(rows_to_add)} new rows.")
     except Exception as exc:
         logger.error(f"Failed to update sheet: {exc}")
