@@ -1,0 +1,123 @@
+import re
+import platform
+import cv2
+import numpy as np
+import pytesseract
+
+try:
+    from mss import mss
+except ImportError:
+    raise ImportError("Please install mss: pip install mss")
+
+# On macOS, handle Retina scaling by querying AppKit
+SCALE = 1.0
+if platform.system() == "Darwin":
+    try:
+        from AppKit import NSScreen
+        SCALE = float(NSScreen.mainScreen().backingScaleFactor())
+    except Exception:
+        print("Warning: could not detect Retina scale factor. Defaulting to 1.0.")
+        SCALE = 1.0
+
+# Regex to match:
+#  • Optional leading '$'
+#  • Digits and commas (e.g. "1,234" or "$12,345")
+#  • Optionally a decimal portion (e.g. "$1,234.56")
+number_pattern = re.compile(r"^\$?[\d,]+(?:\.\d+)?$")
+
+def capture_and_highlight_numbers(bbox_logical):
+    """
+    bbox_logical: dict with keys 'left','top','width','height' in logical points.
+    We multiply by SCALE (on macOS Retina) to get actual device pixels.
+    """
+    # Convert logical‐point coordinates to device pixels
+    bbox_pixels = {
+        "left": int(bbox_logical["left"] * SCALE),
+        "top": int(bbox_logical["top"] * SCALE),
+        "width": int(bbox_logical["width"] * SCALE),
+        "height": int(bbox_logical["height"] * SCALE),
+    }
+
+    with mss() as sct:
+        screenshot = sct.grab(bbox_pixels)
+        # mss returns an array in RGB + alpha. Convert to BGR for OpenCV.
+        img = np.array(screenshot)[:, :, :3]
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    # Draw a red border around the entire captured area
+    ph, pw = img.shape[:2]
+    cv2.rectangle(img, (0, 0), (pw - 1, ph - 1), (0, 0, 255), 2)
+
+    # Run Tesseract OCR and get word‐level data
+    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    n_boxes = len(data["text"])
+
+    for i in range(n_boxes):
+        text = data["text"][i].strip()
+        conf = int(data["conf"][i])
+        # Match if text is purely digits/commas/optional $ prefix (and maybe decimals),
+        # and confidence > 0.
+        if number_pattern.match(text) and conf > 0:
+            x = data["left"][i]
+            y = data["top"][i]
+            w = data["width"][i]
+            h = data["height"][i]
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    return img
+
+
+def main():
+    # Define the region to scan in logical points (e.g., a 300×300 box at (500, 300)).
+    left_pt = 500
+    top_pt = 300
+    width_pt = 300
+    height_pt = 300
+
+    bbox = {
+        "left": left_pt,
+        "top": top_pt,
+        "width": width_pt,
+        "height": height_pt,
+    }
+
+    # Determine window size in pixels so the display matches exactly what we capture
+    window_w = int(width_pt * SCALE)
+    window_h = int(height_pt * SCALE)
+
+    win_name = "macOS Live Scan: Red Border + Number/Comma/$ Detection"
+    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(win_name, window_w, window_h)
+
+    print(
+        f"Starting continuous scan."
+        f" Logical region = ({left_pt}, {top_pt}), size = {width_pt}×{height_pt} points."
+        f" Retina SCALE = {SCALE:.2f}, grabbing {window_w}×{window_h} pixels."
+    )
+    print("Press 'q' or ESC to quit.")
+
+    while True:
+        frame = capture_and_highlight_numbers(bbox)
+        cv2.imshow(win_name, frame)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q") or key == 27:
+            break
+
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    """
+    Dependencies (install via pip):
+      pip install mss opencv-python pytesseract numpy pyobjc-framework-AppKit
+
+    On macOS, also ensure:
+      • Terminal (or your Python interpreter) has Screen Recording permission under
+        System Preferences → Security & Privacy → Screen Recording.
+      • Tesseract is installed (e.g. `brew install tesseract`).
+
+    Then run:
+      python3 live_number_comma_dollar.py
+    """
+    main()
