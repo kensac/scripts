@@ -83,9 +83,9 @@ def capture_and_highlight_numbers(bbox_logical):
 def main():
     # Define the region to scan in logical points (e.g., a 350×500 box at (500, 300)).
     left_pt = 500
-    top_pt = 300
+    top_pt = 200
     width_pt = 350
-    height_pt = 500
+    height_pt = 600
 
     bbox = {
         "left": left_pt,
