@@ -2,7 +2,7 @@ name: Job Application Tracker
 
 on:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: "0 */1 * * *"
   workflow_dispatch:
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: Install dependencies
         run: |
@@ -24,7 +24,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Configure Google credentials
-        # Assumes you’ve saved your service-account JSON into the secret GOOGLE_CREDENTIALS
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
@@ -35,6 +34,36 @@ jobs:
         env:
           SHEET_ID: ${{ secrets.SHEET_ID_INTERNSHIP }}
           JOB_LISTINGS_URL: ${{ secrets.JOB_LISTINGS_URL_INTERNSHIP }}
+        run: |
+          python internship_application_tracker/pittcsc_simplify.py
+  run-tracker-internship-ouckah:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Configure Google credentials
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: |
+          echo "$GOOGLE_CREDENTIALS" > creds.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS_CUSTOM=$(pwd)/creds.json" >> $GITHUB_ENV
+
+      - name: Run tracker for internships
+        env:
+          SHEET_ID: ${{ secrets.SHEET_ID_INTERNSHIP }}
+          JOB_LISTINGS_URL: ${{ secrets.JOB_LISTINGS_URL_INTERNSHIP_OUCKAH }}
         run: |
           python internship_application_tracker/pittcsc_simplify.py
 
@@ -48,7 +77,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: Install dependencies
         run: |

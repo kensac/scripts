@@ -42,6 +42,9 @@ INCLUDED_TERMS: Set[str] = {
     "Summer 2028",
     "Fall 2028",
     "Winter 2028",
+    "Fall",
+    "Summer",
+    "Spring"
 }
 FOUND_SOURCE_DEFAULT: str = "Direct Application"
 JOB_LISTINGS_URL: str = os.environ["JOB_LISTINGS_URL"]
@@ -107,7 +110,7 @@ def fetch_job_postings(url: str, timeout: float = 10.0) -> List[JobPosting]:
                 url=entry.get("url", "")
                 .replace("?utm_source=Simplify&ref=Simplify", "")
                 .replace("&utm_source=Simplify&ref=Simplify", ""),
-                terms=entry.get("terms", []),
+                terms=entry.get("terms", []) + [entry.get("season","")],
                 active=bool(entry.get("active", False)),
                 date_posted=int(entry.get("date_posted", 0)),
             )
