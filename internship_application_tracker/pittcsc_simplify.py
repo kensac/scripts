@@ -82,8 +82,8 @@ def authenticate_gspread() -> gspread.client.Client:
         "https://www.googleapis.com/auth/drive",
     ]
     creds_path = os.environ["GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
-    client = gspread.auth.authorize(creds)
+    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope) # type: ignore
+    client = gspread.auth.authorize(creds) # type: ignore
     logger.info("Authenticated with Google Sheets API.")
     return client
 
