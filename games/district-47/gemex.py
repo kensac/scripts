@@ -22,6 +22,8 @@ def initialize_logger():
 
 
 def perform_click_sequence(coordinates, delays):
+    if len(coordinates) != len(delays):
+        raise ValueError("Coordinates and delays must have the same length.")
     for (x, y), delay in zip(coordinates, delays):
         pyautogui.moveTo(x, y)
         pyautogui.click()
@@ -82,12 +84,11 @@ def count_large_numbers_on_screen():
     logging.info(f"Found {count} instances > {THRESHOLD}")
     return count
 
+DIAMOND = (706, 269)  # Diamond coordinates for reference
+EMERALD = (686,330)
+SAPPHIRE = (689, 390)
 
 def main():
-    DIAMOND = (706, 269)  # Diamond coordinates for reference
-    EMERALD = (686, 330)
-    SAPPHIRE = (689, 390)
-
     mode = DIAMOND
 
     # First click sequence
@@ -135,31 +136,8 @@ def main():
     # Long sleep before next step
     long_sleep(120.0)
 
-    # Single click to go to inventory
-    pyautogui.moveTo(661, 663)
-    pyautogui.click()
-    logging.info("Clicked at (661, 663)")
-
-    time.sleep(5)
-
-    # Count instances > 10000
-    n = count_large_numbers_on_screen()
-    time.sleep(5)  # Wait for 3 seconds after counting
-
-    # Next click to open vault
-    pyautogui.moveTo(752, 178)
-    pyautogui.click()
-    time.sleep(3)  # Wait for 3 seconds
-
-    for i in range(n):
-        logging.info(f"Clicked at (647, 223) for instance {i + 1} of {n}")
-        pyautogui.moveTo(647, 223)
-        pyautogui.click()
-        time.sleep(3)
-
     seq2_coords = [
         # wr loop
-        (521, 176),  # Exit inventory
         (541, 228),  # Exit WR
         (519, 176),  # Actually exit WR
         (530, 194),  # who has 3 back buttons
@@ -179,47 +157,14 @@ def main():
         (806, 800),  # Sell
         (716, 785),  # confirm sell
         (716, 785),  # exit confirm sell
-        # sell loop 4
-        (756, 313),  # select all
-        (806, 800),  # Sell
-        (716, 785),  # confirm sell
-        (716, 785),  # exit confirm sell
-        # sell loop 5
-        (756, 313),  # select all
-        (806, 800),  # Sell
-        (716, 785),  # confirm sell
-        (716, 785),  # exit confirm sell
         # reset loop
         (527, 190),  # exit sell
     ]
-    seq2_delays = [
-        3,
-        3,
-        3,
-        3,
-        3,  # wr loop
-        3,
-        3,
-        10,
-        3,  # sell loop 1
-        3,
-        3,
-        10,
-        3,  # sell loop 2
-        3,
-        3,
-        10,
-        3,  # sell loop 3
-        3,
-        3,
-        10,
-        3,  # sell loop 4
-        3,
-        3,
-        10,
-        3,  # sell loop 5
-        3,
-    ]  # reset loop
+    seq2_delays = [3, 3, 3, 3, # wr loop
+                    3, 3, 10, 3,  # sell loop 1
+                    3, 3, 10, 3,  # sell loop 2
+                    3, 3, 10, 3,  # sell loop 3
+                    3] # reset loop
     perform_click_sequence(seq2_coords, seq2_delays)
     # Wait for 3 seconds
     time.sleep(3)
@@ -232,19 +177,7 @@ if __name__ == "__main__":
     # 5 seconds delay before starting
     logging.info("Starting automation sequence in 5 seconds...")
     time.sleep(5)
-    cycle = 0
-    while True:
-        logging.info(f"Running automation sequence cycle {cycle + 1}...")
-        cycle += 1
-        try:
-            main()
-        except Exception as e:
-            logging.error(f"An error occurred: {e}")
-            logging.info("Restarting automation sequence...")
-            time.sleep(5)
-        except KeyboardInterrupt:
-            logging.info("Automation sequence interrupted by user.")
-            break
-        except SystemExit:
-            logging.info("Automation sequence exiting.")
-            break
+    # run 3 times
+    for _ in range(3):
+        logging.info("Running automation sequence...")
+        main()
