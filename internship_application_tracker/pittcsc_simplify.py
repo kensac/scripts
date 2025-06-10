@@ -44,7 +44,8 @@ INCLUDED_TERMS: Set[str] = {
     "Winter 2028",
     "Fall",
     "Summer",
-    "Spring"
+    "Spring",
+    "Winter",
 }
 FOUND_SOURCE_DEFAULT: str = "Direct Application"
 JOB_LISTINGS_URL: str = os.environ["JOB_LISTINGS_URL"]
