@@ -83,8 +83,8 @@ def authenticate_gspread() -> gspread.client.Client:
         "https://www.googleapis.com/auth/drive",
     ]
     creds_path = os.environ["GOOGLE_APPLICATION_CREDENTIALS_CUSTOM"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope) # type: ignore
-    client = gspread.auth.authorize(creds) # type: ignore
+    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)  # type: ignore
+    client = gspread.auth.authorize(creds)  # type: ignore
     logger.info("Authenticated with Google Sheets API.")
     return client
 
@@ -103,6 +103,14 @@ def fetch_job_postings(url: str, timeout: float = 10.0) -> List[JobPosting]:
 
     postings: List[JobPosting] = []
     for entry in data:
+        # pre process terms
+        terms = []
+        if "terms" in entry:
+            terms = entry["terms"]
+        elif "seasons" in entry:
+            # Fallback for older entries that use "seasons"
+            terms = entry["seasons"]
+
         postings.append(
             JobPosting(
                 company=entry.get("company_name", ""),
@@ -111,7 +119,7 @@ def fetch_job_postings(url: str, timeout: float = 10.0) -> List[JobPosting]:
                 url=entry.get("url", "")
                 .replace("?utm_source=Simplify&ref=Simplify", "")
                 .replace("&utm_source=Simplify&ref=Simplify", ""),
-                terms=entry.get("terms", []) + [entry.get("season","")],
+                terms=terms,
                 active=bool(entry.get("active", False)),
                 date_posted=int(entry.get("date_posted", 0)),
             )
@@ -199,12 +207,72 @@ def write_to_sheet(sheet: Worksheet, jobs: List[JobPosting]) -> None:
         logger.error(f"Failed to update sheet: {exc}")
 
 
+def summarize_filters(
+    postings: List[JobPosting], existing_urls: Set[str]
+) -> None:
+    excluded_locations: Set[str] = set()
+    excluded_terms: Set[str] = set()
+    summary = {
+        "excluded_locations": excluded_locations,
+        "excluded_terms": excluded_terms,
+        "location_excluded_jobs": [],
+        "term_excluded_jobs": [],
+        "date_excluded_jobs": [],
+        "duplicate_jobs": [],
+        "passed_jobs": [],
+        "inactive_jobs": [],
+    }
+
+    for job in postings:
+        if not job.active:
+            summary["inactive_jobs"].append(job)
+            continue
+
+        if is_location_excluded(" ".join(job.locations)):
+            summary["location_excluded_jobs"].append(job)
+            for loc in job.locations:
+                if is_location_excluded(loc):
+                    excluded_locations.add(loc)
+            continue
+
+        if job.terms:
+            if not is_terms_included(job.terms):
+                summary["term_excluded_jobs"].append(job)
+                for term in job.terms:
+                    if term not in INCLUDED_TERMS:
+                        excluded_terms.add(term)
+                continue
+        else:
+            if job.date_posted < FALLBACK_CUTOFF_TS:
+                summary["date_excluded_jobs"].append(job)
+                continue
+
+        if job.url in existing_urls:
+            summary["duplicate_jobs"].append(job)
+            continue
+
+        summary["passed_jobs"].append(job)
+
+    logger.info("Filter Summary:")
+    logger.info(f"Excluded Locations: {summary['excluded_locations']}")
+    logger.info(f"Excluded Terms: {summary['excluded_terms']}")
+    logger.info(f"Location Excluded Jobs: {len(summary['location_excluded_jobs'])}")
+    logger.info(f"Term Excluded Jobs: {len(summary['term_excluded_jobs'])}")
+    logger.info(f"Date Excluded Jobs: {len(summary['date_excluded_jobs'])}")
+    logger.info(f"Duplicate Jobs: {len(summary['duplicate_jobs'])}")
+    logger.info(f"Passed Jobs: {len(summary['passed_jobs'])}")
+    logger.info(f"Inactive Jobs: {len(summary['inactive_jobs'])}")
+
+
 def main() -> None:
     client = authenticate_gspread()
     sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
     postings = fetch_job_postings(JOB_LISTINGS_URL)
     existing_urls = get_existing_urls(sheet)
     new_jobs = filter_job_postings(postings, existing_urls)
+    summarize_filters(postings, existing_urls)
+
+
     write_to_sheet(sheet, new_jobs)
 
 
