@@ -1,3 +1,5 @@
+from calendar import c
+import pprint
 import re
 import time
 import logging
@@ -33,7 +35,9 @@ class ScrollAction:
     delay: float = 0.0
 
 
-action_sequences = {
+Actions = Union[ClickAction, TypeAction, ScrollAction]
+
+action_sequences: dict[str, list[Actions]] = {
     "buy_gems": [
         ClickAction((477, 300), 1),  # open WR
         ClickAction((565, 570), 1),  # open Diamonds
@@ -53,7 +57,7 @@ action_sequences = {
         ClickAction((477, 551), 3),  # open WB
         ClickAction((583, 765), 1),  # enter menu
     ],
-    "create_jewels": [
+    "create_jewels_solitare": [
         ClickAction((571, 678), 3),  # enter WD
         ClickAction((598, 541), 1),  # click create
         ClickAction((655, 184), 1),  # Solitaire
@@ -66,9 +70,38 @@ action_sequences = {
         ClickAction((661, 739), 5),  # click create
         ClickAction((611, 702), 1),  # click continue
     ],
+    "create_jewels_trio": [
+        ClickAction((571, 678), 3),  # enter WD
+        ClickAction((598, 541), 1),  # click create
+        ClickAction((527, 186), 1),  # Trio
+        ClickAction((451, 658), 1),  # sort by value
+        ClickAction((582, 437), 1),  # add stone button 1
+        ClickAction((478, 762), 1),  # select max value stone
+        ClickAction((565, 495), 1),  # add stone button 2
+        ClickAction((478, 762), 1),  # select max value stone
+        ClickAction((604, 492), 1),  # add stone button 3
+        ClickAction((478, 762), 1),  # select max value stone
+        ClickAction((730, 144), 1),  # click tick
+        ClickAction((471, 199), 1),  # click text area
+        TypeAction("1", 1),  # type quantity
+        ClickAction((661, 739), 5),  # click create
+        ClickAction((611, 702), 1),  # click continue
+    ],
     "Jewel Sell": [
         ClickAction((592, 749), 1),  # Click view inventory
         ClickAction((606, 476), 10),  # Click Immediate sell
+        ClickAction((575, 732), 1),  # Accept Offer
+        ClickAction((446, 149), 1),  # back to WB Menu
+    ],
+    "Jewel Auction": [
+        ClickAction((592, 749), 1),  # Click view inventory
+        ClickAction((675, 476), 1),  # Click Immediate sell
+        ClickAction((466, 511), 1),  # 20 Minutes
+        ClickAction((584, 701), 1),  # back to WB Menu
+    ],
+    "Jewel Sell_Short": [
+        ClickAction((592, 749), 1),  # Click view inventory
+        ClickAction((606, 476), 2),  # Click Immediate sell
         ClickAction((575, 732), 1),  # Accept Offer
         ClickAction((446, 149), 1),  # back to WB Menu
     ],
@@ -83,12 +116,7 @@ action_sequences = {
         ClickAction((592, 528), 1),  # exit confirm sell
         ClickAction((436, 142), 1),  # exit sell
     ],
-    "test_scroll": [
-        ScrollAction(-1000, 100),  # scroll down list
-    ],
 }
-
-Actions = Union[ClickAction, TypeAction, ScrollAction]
 
 
 def initialize_logger():
@@ -127,18 +155,18 @@ def perform_sequence(actions: Sequence[Actions]):
 
 
 def count_large_numbers_on_screen(threshold: float = THRESHOLD) -> int:
-    bbox = {"left": 430, "top": 80, "width": 400, "height": 700}
+    bbox = {"left": 430, "top": 150, "width": 400, "height": 650}
     with mss() as sct:
         img = np.array(sct.grab(bbox))[:, :, :3]
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)  # type: ignore
     count = 0
-    for text, conf in zip(data["text"], data["conf"]):
-        if int(conf or 0) <= 0:
+    for text, conf in zip(data["text"], data["conf"]):  # type: ignore
+        if int(conf or 0) <= 0:  # type: ignore
             continue
-        cleaned = text.strip().lstrip("$").replace(",", "")
-        if NUMBER_PATTERN.match(cleaned) and float(cleaned) > threshold:
+        cleaned = text.strip().lstrip("$").replace(",", "")  # type: ignore
+        if NUMBER_PATTERN.match(cleaned) and float(cleaned) > threshold:  # type: ignore
             count += 1
     logging.info(f"Detected {count} values over {threshold}")
     return count
@@ -164,14 +192,19 @@ class Automator:
                 wait -= interval
 
     def run_cycle(self):
+
         perform_sequence(action_sequences["buy_gems"])
-        gem_over_threshold = count_large_numbers_on_screen()
+        # take 50 screenshots and average the count of large numbers
+        gem_over_threshold = count_large_numbers_on_screen(THRESHOLD)
         perform_sequence(action_sequences["exit_wr"])
 
         perform_sequence(action_sequences["open_WB"])
-        for _ in range(max(4, gem_over_threshold)):
-            perform_sequence(action_sequences["create_jewels"])
-            perform_sequence(action_sequences["Jewel Sell"])
+        for i in range(max(0, gem_over_threshold)):
+            perform_sequence(action_sequences["create_jewels_solitare"])
+            if i == 0:
+                perform_sequence(action_sequences["Jewel Sell"])
+            else:
+                perform_sequence(action_sequences["Jewel Sell_Short"])
         perform_sequence(action_sequences["Exit WD Menu"])
 
         perform_sequence(action_sequences["sell_items"])
